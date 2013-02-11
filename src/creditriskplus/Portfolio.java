@@ -3,6 +3,11 @@ package creditriskplus;
 import java.util.ArrayList;
 import java.util.Vector;
 
+import org.apache.commons.math3.complex.Complex;
+import org.apache.commons.math3.transform.DftNormalization;
+import org.apache.commons.math3.transform.FastFourierTransformer;
+import org.apache.commons.math3.transform.TransformType;
+
 public class Portfolio 
 {
 	private double totExp;
@@ -10,6 +15,9 @@ public class Portfolio
 	private double minExp = Double.MAX_VALUE, maxExp = 0, avgExp = 0, dvsExp;
 	private ArrayList<Obligor> obligors;
 	private Vector<Vector<Double>> ptLGD; // array of vectors of Loss Given Default
+	private Complex[] ptDefProbFFT; // product of the FFT LDGs of all the obligors
+	private double[] ptDefProb; // pt LDG based on obligors LDG
+	
 	
 	public Portfolio()
 	{
@@ -57,10 +65,34 @@ public class Portfolio
 
 	public void ApplyFFT()
 	{
+		// Apply FFT to each of the obligors default probability arrays
 		for(int i = 0; i < obligors.size(); i++)
 		{
 			obligors.get(i).ApplyFFT();
 		}
+		
+		// Calculate the pt def probability FFT array
+		// each item of the array corresponds to the probability of a loss of `band` size
+		// in the portfolio, given each obligor band exposure and its probability of default
+		ptDefProbFFT = new Complex[obligors.get(0).getDefProbVecFFT().length];
+		for(int y = 0; y < ptDefProbFFT.length; y++)
+		{
+			ptDefProbFFT[y] = obligors.get(0).getDefProbVecFFT()[y];
+		}
+		for(int i = 1; i < obligors.size(); i++)
+		{
+			Obligor o = obligors.get(i);
+			Complex[] obDefProbFFT = o.getDefProbVecFFT(); 
+			for(int y = 0; y < obDefProbFFT.length; y++)
+			{
+				ptDefProbFFT[y] = ptDefProbFFT[y].multiply(obDefProbFFT[y]);
+			}
+		}
+		FastFourierTransformer fft = new FastFourierTransformer(DftNormalization.STANDARD);
+		Complex[] temp = fft.transform(ptDefProbFFT, TransformType.INVERSE);
+		ptDefProb = new double[temp.length];
+		for(int i = 0; i < temp.length; i++)
+			ptDefProb[i] = temp[i].getReal(); 
 	}
 	
 	private int factorial(int n) throws NumberFormatException
@@ -152,4 +184,14 @@ public class Portfolio
 	public int getTotExpNorm() {
 		return totExpNorm;
 	}
+
+	public Complex[] getPtDefProbFFT() {
+		return ptDefProbFFT;
+	}
+
+	public double[] getPtDefProb() {
+		return ptDefProb;
+	}
+	
+	
 }
